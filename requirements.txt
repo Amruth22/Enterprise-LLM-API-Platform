@@ -1,0 +1,12 @@
+Flask
+python-dotenv
+Flask-Limiter
+Flask-RESTX
+Flask-CORS
+tenacity
+tiktoken
+
+waitress
+langchain
+langchain-google-genai
+langchain-community
