@@ -66,14 +66,14 @@ python app.py
 ```
 
 6. **Access the API**
-- **Swagger UI**: http://localhost:5000/swagger/
-- **API Base**: http://localhost:5000/api/v1/
+- **Swagger UI**: http://0.0.0.0:8081/swagger/
+- **API Base**: http://0.0.0.0:8081/api/v1/
 
 ## 📚 API Reference
 
 ### Base URL
 ```
-http://localhost:5000/api/v1
+http://0.0.0.0:8081/api/v1
 ```
 
 ### Endpoints
@@ -216,14 +216,14 @@ waitress             # WSGI server for production
 
 ### Using Waitress (Recommended)
 ```bash
-waitress-serve --host=0.0.0.0 --port=5000 app:app
+waitress-serve --host=0.0.0.0 --port=8081 app:app
 ```
 
 ### Alternative Production Setup
 ```bash
 # Run with production settings
 export FLASK_ENV=production
-waitress-serve --host=0.0.0.0 --port=5000 --threads=4 app:app
+waitress-serve --host=0.0.0.0 --port=8081 --threads=4 app:app
 ```
 
 ## 🔍 Monitoring & Logging
@@ -283,7 +283,7 @@ For support, questions, or feature requests:
 
 **Built with ❤️ using Google Gemini 2.0 Flash**
 
-[![Swagger](https://img.shields.io/badge/API_Docs-Swagger-green.svg)](http://localhost:5000/swagger/)
+[![Swagger](https://img.shields.io/badge/API_Docs-Swagger-green.svg)](http://0.0.0.0:8081/swagger/)
 [![Tests](https://img.shields.io/badge/Tests-Comprehensive-blue.svg)](#-testing)
 [![Rate_Limiting](https://img.shields.io/badge/Rate_Limiting-Smart-orange.svg)](#-rate-limiting--retry-logic)
 
