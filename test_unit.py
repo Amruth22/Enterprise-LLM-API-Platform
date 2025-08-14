@@ -404,6 +404,7 @@ class TestMultiTaskLLMAPI(unittest.TestCase):
         logs_dir = os.path.join(os.getcwd(), 'logs')
         self.assertTrue(os.path.exists(logs_dir), "Logs directory should exist")
         print(f"✅ Logs directory exists: {logs_dir}")
+        print(f"📝 Note: Application runs on http://0.0.0.0:8081 (hardcoded)")
         
         # Check for expected log files
         expected_log_files = [
@@ -431,6 +432,7 @@ class TestMultiTaskLLMAPI(unittest.TestCase):
 
 if __name__ == '__main__':
     print("🚀 Starting Multi-Task LLM API Unit Tests...")
+    print("📡 Testing against hardcoded configuration: 0.0.0.0:8081")
     print("=" * 60)
     
     # Create test suite
@@ -444,6 +446,7 @@ if __name__ == '__main__':
     print("\n" + "=" * 60)
     if result.wasSuccessful():
         print("🎉 All tests passed successfully!")
+    print("🌐 Application ready at: http://0.0.0.0:8081/swagger/")
     else:
         print(f"❌ {len(result.failures)} test(s) failed, {len(result.errors)} error(s)")
         
