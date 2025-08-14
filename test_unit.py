@@ -15,13 +15,53 @@ from cost_tracker import CostTracker
 
 class TestMultiTaskLLMAPI(unittest.TestCase):
     
+    server_thread = None
+    server_started = False
+    base_url = "http://127.0.0.1:8081/api/v1"
+    
     @classmethod
     def setUpClass(cls):
-        """Set up test client and load environment"""
+        """Set up live server and load environment"""
         load_dotenv()
-        cls.app = app
-        cls.app.config['TESTING'] = True
-        cls.client = cls.app.test_client()
+        
+        # Start the Flask server in a separate thread
+        cls.server_thread = threading.Thread(target=cls._run_server, daemon=True)
+        cls.server_thread.start()
+        
+        # Wait for server to start
+        cls._wait_for_server()
+        
+        print(f"✅ Test server started at {cls.base_url}")
+    
+    @classmethod
+    def _run_server(cls):
+        """Run Flask server in thread"""
+        try:
+            app.run(host='0.0.0.0', port=8081, debug=False, use_reloader=False, threaded=True)
+        except Exception as e:
+            print(f"❌ Server failed to start: {e}")
+    
+    @classmethod
+    def _wait_for_server(cls, timeout=30):
+        """Wait for server to be ready"""
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            try:
+                response = requests.get(f"{cls.base_url.replace('/api/v1', '')}/api/v1/health", timeout=2)
+                if response.status_code == 200:
+                    cls.server_started = True
+                    return
+            except requests.exceptions.RequestException:
+                pass
+            time.sleep(0.5)
+        
+        raise RuntimeError(f"Server failed to start within {timeout} seconds")
+    
+    @classmethod
+    def tearDownClass(cls):
+        """Clean up after tests"""
+        print("\n🧹 Cleaning up test environment...")
+        # Note: Server thread will be cleaned up automatically as it's a daemon thread
         
     def test_01_env_api_key_configured(self):
         """Test that the GOOGLE_API_KEY is properly configured in .env"""
@@ -47,15 +87,15 @@ class TestMultiTaskLLMAPI(unittest.TestCase):
             "prompt": "Write a one-sentence story about a cat."
         }
         
-        response = self.client.post(
-            '/api/v1/generate/text',
-            data=json.dumps(payload),
-            content_type='application/json'
+        response = requests.post(
+            f'{self.base_url}/generate/text',
+            json=payload,
+            headers={'Content-Type': 'application/json'}
         )
         
         self.assertEqual(response.status_code, 200)
         
-        data = json.loads(response.data)
+        data = response.json()
         self.assertIn('generated_text', data)
         self.assertIsNotNone(data['generated_text'])
         self.assertTrue(len(data['generated_text']) > 0)
@@ -70,15 +110,15 @@ class TestMultiTaskLLMAPI(unittest.TestCase):
             "prompt": "Create a simple Python function that adds two numbers"
         }
         
-        response = self.client.post(
-            '/api/v1/generate/code',
-            data=json.dumps(payload),
-            content_type='application/json'
+        response = requests.post(
+            f'{self.base_url}/generate/code',
+            json=payload,
+            headers={'Content-Type': 'application/json'}
         )
         
         self.assertEqual(response.status_code, 200)
         
-        data = json.loads(response.data)
+        data = response.json()
         self.assertIn('generated_code', data)
         self.assertIsNotNone(data['generated_code'])
         self.assertTrue(len(data['generated_code']) > 0)
@@ -95,15 +135,15 @@ class TestMultiTaskLLMAPI(unittest.TestCase):
             "categories": ["positive", "negative", "neutral"]
         }
         
-        response = self.client.post(
-            '/api/v1/classify/text',
-            data=json.dumps(payload),
-            content_type='application/json'
+        response = requests.post(
+            f'{self.base_url}/classify/text',
+            json=payload,
+            headers={'Content-Type': 'application/json'}
         )
         
         self.assertEqual(response.status_code, 200)
         
-        data = json.loads(response.data)
+        data = response.json()
         self.assertIn('classification', data)
         self.assertIsNotNone(data['classification'])
         self.assertIn(data['classification'].lower(), ['positive', 'negative', 'neutral'])
@@ -121,7 +161,7 @@ class TestMultiTaskLLMAPI(unittest.TestCase):
             content_type='application/json'
         )
         self.assertEqual(response.status_code, 400)
-        data = json.loads(response.data)
+        data = response.json()
         self.assertIn('error', data)
         
         # Test missing fields for classification
@@ -131,7 +171,7 @@ class TestMultiTaskLLMAPI(unittest.TestCase):
             content_type='application/json'
         )
         self.assertEqual(response.status_code, 400)
-        data = json.loads(response.data)
+        data = response.json()
         self.assertIn('error', data)
         
         print("✅ Error handling working correctly")
@@ -226,10 +266,10 @@ class TestMultiTaskLLMAPI(unittest.TestCase):
             "prompt": "Say hello in one word"
         }
         
-        response = self.client.post(
-            '/api/v1/generate/text',
-            data=json.dumps(payload),
-            content_type='application/json'
+        response = requests.post(
+            f'{self.base_url}/generate/text',
+            json=payload,
+            headers={'Content-Type': 'application/json'}
         )
         
         self.assertEqual(response.status_code, 200)
@@ -291,20 +331,20 @@ class TestMultiTaskLLMAPI(unittest.TestCase):
         print("\n🔍 Testing Health and Stats Endpoints...")
         
         # Test health endpoint
-        response = self.client.get('/api/v1/health')
+        response = requests.get(f'{self.base_url}/health')
         self.assertEqual(response.status_code, 200)
         
-        data = json.loads(response.data)
+        data = response.json()
         self.assertEqual(data['status'], 'healthy')
         self.assertIn('timestamp', data)
         
         print("✅ Health endpoint working")
         
         # Test stats endpoint
-        response = self.client.get('/api/v1/stats')
+        response = requests.get(f'{self.base_url}/stats')
         self.assertEqual(response.status_code, 200)
         
-        data = json.loads(response.data)
+        data = response.json()
         self.assertIn('cache_stats', data)
         self.assertIn('usage_stats', data)
         self.assertIn('rate_limit_stats', data)
@@ -328,10 +368,10 @@ class TestMultiTaskLLMAPI(unittest.TestCase):
         for i, prompt in enumerate(prompts):
             payload = {"prompt": prompt}
             
-            response = self.client.post(
-                '/api/v1/generate/text',
-                data=json.dumps(payload),
-                content_type='application/json'
+            response = requests.post(
+                f'{self.base_url}/generate/text',
+                json=payload,
+                headers={'Content-Type': 'application/json'}
             )
             
             self.assertEqual(response.status_code, 200)
@@ -355,10 +395,10 @@ class TestMultiTaskLLMAPI(unittest.TestCase):
         
         # Make initial request (should be cache miss)
         payload = {"prompt": "Cache test prompt 1"}
-        response1 = self.client.post(
-            '/api/v1/generate/text',
-            data=json.dumps(payload),
-            content_type='application/json'
+        response1 = requests.post(
+            f'{self.base_url}/generate/text',
+            json=payload,
+            headers={'Content-Type': 'application/json'}
         )
         
         self.assertEqual(response1.status_code, 200)
@@ -367,10 +407,10 @@ class TestMultiTaskLLMAPI(unittest.TestCase):
         print("✅ Cache miss working correctly")
         
         # Make same request again (should be cache hit)
-        response2 = self.client.post(
-            '/api/v1/generate/text',
-            data=json.dumps(payload),
-            content_type='application/json'
+        response2 = requests.post(
+            f'{self.base_url}/generate/text',
+            json=payload,
+            headers={'Content-Type': 'application/json'}
         )
         
         self.assertEqual(response2.status_code, 200)
@@ -381,9 +421,9 @@ class TestMultiTaskLLMAPI(unittest.TestCase):
         print("✅ Cache hit working correctly")
         
         # Verify cache stats
-        stats_response = self.client.get('/api/v1/stats')
+        stats_response = requests.get(f'{self.base_url}/stats')
         self.assertEqual(stats_response.status_code, 200)
-        stats = json.loads(stats_response.data)
+        stats = stats_response.json()
         
         cache_stats = stats.get('cache_stats', {})
         self.assertGreater(cache_stats.get('hit_count', 0), 0, "Should have cache hits")
@@ -395,10 +435,10 @@ class TestMultiTaskLLMAPI(unittest.TestCase):
         
         # Make a request to generate some logs
         payload = {"prompt": "Log test prompt"}
-        response = self.client.post(
-            '/api/v1/generate/text',
-            data=json.dumps(payload),
-            content_type='application/json'
+        response = requests.post(
+            f'{self.base_url}/generate/text',
+            json=payload,
+            headers={'Content-Type': 'application/json'}
         )
         
         self.assertEqual(response.status_code, 200)
