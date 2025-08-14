@@ -3,6 +3,9 @@ import json
 import os
 import time
 import threading
+import requests
+import signal
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from dotenv import load_dotenv
 from app import app
