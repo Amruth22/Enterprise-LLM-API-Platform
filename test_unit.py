@@ -17,7 +17,7 @@ class TestMultiTaskLLMAPI(unittest.TestCase):
     
     server_thread = None
     server_started = False
-    base_url = "http://127.0.0.1:8081/api/v1"
+    base_url = "http://0.0.0.0:8081/api/v1"
     
     @classmethod
     def setUpClass(cls):
@@ -47,7 +47,7 @@ class TestMultiTaskLLMAPI(unittest.TestCase):
         start_time = time.time()
         while time.time() - start_time < timeout:
             try:
-                response = requests.get(f"{cls.base_url.replace('/api/v1', '')}/api/v1/health", timeout=2)
+                response = requests.get("http://127.0.0.1:8081/api/v1/health", timeout=2)
                 if response.status_code == 200:
                     cls.server_started = True
                     return
@@ -447,7 +447,7 @@ class TestMultiTaskLLMAPI(unittest.TestCase):
         logs_dir = os.path.join(os.getcwd(), 'logs')
         self.assertTrue(os.path.exists(logs_dir), "Logs directory should exist")
         print(f"✅ Logs directory exists: {logs_dir}")
-        print(f"📝 Note: Live server running on http://127.0.0.1:8081")
+        print(f"📝 Note: Live server running on http://0.0.0.0:8081")
         print(f"🔗 Production deployment: http://0.0.0.0:8081 (hardcoded)")
         
         # Check for expected log files
@@ -476,7 +476,7 @@ class TestMultiTaskLLMAPI(unittest.TestCase):
 
 if __name__ == '__main__':
     print("🚀 Starting Multi-Task LLM API Unit Tests...")
-    print("📡 Testing against live server: http://127.0.0.1:8081")
+    print("📡 Testing against live server: http://0.0.0.0:8081")
     print("🔄 Server will start automatically and run tests")
     print("=" * 60)
     
@@ -491,8 +491,8 @@ if __name__ == '__main__':
     print("\n" + "=" * 60)
     if result.wasSuccessful():
         print("🎉 All tests passed successfully!")
-    print("🌐 Live server tested at: http://127.0.0.1:8081")
-    print("📊 Swagger UI: http://127.0.0.1:8081/swagger/")
+    print("🌐 Live server tested at: http://0.0.0.0:8081")
+    print("📊 Swagger UI: http://0.0.0.0:8081/swagger/")
     else:
         print(f"❌ {len(result.failures)} test(s) failed, {len(result.errors)} error(s)")
         
