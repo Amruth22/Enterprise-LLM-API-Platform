@@ -553,17 +553,17 @@ Your implementation is successful when:
 ### Basic API Usage
 ```bash
 # Text Generation
-curl -X POST http://localhost:5000/api/v1/generate/text \
+curl -X POST http://0.0.0.0:8081/api/v1/generate/text \
   -H "Content-Type: application/json" \
   -d '{"prompt": "Write a short story about AI"}'
 
 # Code Generation
-curl -X POST http://localhost:5000/api/v1/generate/code \
+curl -X POST http://0.0.0.0:8081/api/v1/generate/code \
   -H "Content-Type: application/json" \
   -d '{"prompt": "Create a Python function for binary search"}'
 
 # Text Classification
-curl -X POST http://localhost:5000/api/v1/classify/text \
+curl -X POST http://0.0.0.0:8081/api/v1/classify/text \
   -H "Content-Type: application/json" \
   -d '{"text": "This product is amazing!", "categories": ["positive", "negative", "neutral"]}'
 ```
@@ -571,13 +571,13 @@ curl -X POST http://localhost:5000/api/v1/classify/text \
 ### Enterprise Monitoring
 ```bash
 # Health Check
-curl http://localhost:5000/api/v1/health
+curl http://0.0.0.0:8081/api/v1/health
 
 # Usage Statistics
-curl http://localhost:5000/api/v1/stats
+curl http://0.0.0.0:8081/api/v1/stats
 
 # Swagger Documentation
-open http://localhost:5000/swagger/
+open http://0.0.0.0:8081/swagger/
 ```
 
 ### Cost Analysis Example
