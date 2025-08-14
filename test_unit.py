@@ -287,10 +287,10 @@ class TestMultiTaskLLMAPI(unittest.TestCase):
         print(f"✅ Cached: {cached}")
         
         # Make the same request again to test caching
-        response2 = self.client.post(
-            '/api/v1/generate/text',
-            data=json.dumps(payload),
-            content_type='application/json'
+        response2 = requests.post(
+            f'{self.base_url}/generate/text',
+            json=payload,
+            headers={'Content-Type': 'application/json'}
         )
         
         cached2 = response2.headers.get('X-Cached', 'False') == 'True'
