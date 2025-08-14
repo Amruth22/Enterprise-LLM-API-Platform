@@ -155,20 +155,20 @@ class TestMultiTaskLLMAPI(unittest.TestCase):
         print("\n❌ Testing Error Handling...")
         
         # Test missing prompt for text generation
-        response = self.client.post(
-            '/api/v1/generate/text',
-            data=json.dumps({}),
-            content_type='application/json'
+        response = requests.post(
+            f'{self.base_url}/generate/text',
+            json={},  # Empty payload - missing required 'prompt'
+            headers={'Content-Type': 'application/json'}
         )
         self.assertEqual(response.status_code, 400)
         data = response.json()
         self.assertIn('error', data)
         
         # Test missing fields for classification
-        response = self.client.post(
-            '/api/v1/classify/text',
-            data=json.dumps({"text": "test"}),  # missing categories
-            content_type='application/json'
+        response = requests.post(
+            f'{self.base_url}/classify/text',
+            json={"text": "test"},  # missing 'categories' field
+            headers={'Content-Type': 'application/json'}
         )
         self.assertEqual(response.status_code, 400)
         data = response.json()
