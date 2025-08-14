@@ -163,7 +163,7 @@ python app.py
 ### Production with Waitress
 ```bash
 # Run with production WSGI server
-waitress-serve --host=0.0.0.0 --port=5000 --threads=4 app:app
+waitress-serve --host=0.0.0.0 --port=8081 --threads=4 app:app
 ```
 
 ## 💰 Cost Analysis
