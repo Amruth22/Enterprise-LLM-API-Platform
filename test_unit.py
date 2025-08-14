@@ -491,8 +491,8 @@ if __name__ == '__main__':
     print("\n" + "=" * 60)
     if result.wasSuccessful():
         print("🎉 All tests passed successfully!")
-    print("🌐 Live server tested at: http://0.0.0.0:8081")
-    print("📊 Swagger UI: http://0.0.0.0:8081/swagger/")
+        print("🌐 Live server tested at: http://0.0.0.0:8081")
+        print("📊 Swagger UI: http://0.0.0.0:8081/swagger/")
     else:
         print(f"❌ {len(result.failures)} test(s) failed, {len(result.errors)} error(s)")
         
