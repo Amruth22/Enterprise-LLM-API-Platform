@@ -24,13 +24,6 @@ class CoreEnterpriseTests(unittest.TestCase):
         
         # Initialize enterprise components
         try:
-            from lru_cache import LRUCache
-            from cost_tracker import CostTracker
-            from gemini_wrapper import generate_text, generate_code
-            
-            cls.lru_cache = LRUCache(max_size=100, default_ttl=3600)
-        # Initialize enterprise components
-        try:
             from lru_cache import LRUCache, ResponseCache
             from cost_tracker import CostTracker
             import gemini_wrapper
@@ -43,34 +36,29 @@ class CoreEnterpriseTests(unittest.TestCase):
             print("Enterprise components loaded successfully")
         except ImportError as e:
             raise unittest.SkipTest(f"Required enterprise components not found: {e}")
-            print("Enterprise components loaded successfully")
-        except ImportError as e:
-            raise unittest.SkipTest(f"Required enterprise components not found: {e}")
 
     def test_01_text_generation(self):
         """Test 1: Text generation with real API"""
         print("Running Test 1: Text generation")
         
         # Test with simple prompt
-        prompt = "Write a one-sentence story about a curious cat"
+        prompt = "Hi"
         result = self.gemini_wrapper.generate_text(prompt)
-        result = self.generate_text(prompt)
         
         # Assertions
         self.assertIsInstance(result, str)
         self.assertGreater(len(result), 0)
-        self.assertIn('cat', result.lower())
+        self.assertIn('hi', result.lower())
         
         print(f"PASS: Generated text: {result[:50]}...")
 
     def test_02_code_generation(self):
-        # Test with code prompt
-        prompt = "Write a Python function to add two numbers"
-        result = self.gemini_wrapper.generate_code(prompt)
+        """Test 2: Code generation with real API"""
+        print("Running Test 2: Code generation")
         
         # Test with code prompt
         prompt = "Write a Python function to add two numbers"
-        result = self.generate_code(prompt)
+        result = self.gemini_wrapper.generate_code(prompt)
         
         # Assertions
         self.assertIsInstance(result, str)
@@ -128,8 +116,8 @@ class CoreEnterpriseTests(unittest.TestCase):
         self.assertGreater(record.input_tokens, 0)
         self.assertGreater(record.output_tokens, 0)
         self.assertGreaterEqual(record.total_cost, 0)
-        # Create a small ResponseCache for testing eviction (has hit/miss tracking)
-        test_cache = self.response_cache.__class__(max_size=3, default_ttl=10)
+        self.assertEqual(record.endpoint, endpoint)
+        self.assertEqual(record.user_ip, user_ip)
         
         # Test usage stats
         stats = self.cost_tracker.get_usage_stats(24)
@@ -144,22 +132,19 @@ class CoreEnterpriseTests(unittest.TestCase):
         """Test 5: Advanced LRU Cache behavior"""
         print("Running Test 5: Advanced LRU Cache behavior")
         
-        # Create a small cache for testing eviction
-        test_cache = self.lru_cache.__class__(max_size=3, default_ttl=10)
+        # Create a small ResponseCache for testing eviction (has hit/miss tracking)
+        test_cache = self.response_cache.__class__(max_size=3, default_ttl=10)
         
         # Fill cache to capacity
         test_cache.put("key1", "value1")
         test_cache.put("key2", "value2")
         test_cache.put("key3", "value3")
         
-        # Test cache statistics
-        stats = test_cache.get_stats()
-        self.assertIn('hit_count', stats)
-        self.assertIn('miss_count', stats)
-        self.assertIn('cache_hit_ratio', stats)
-        
-        print(f"PASS: LRU eviction working correctly")
-        print(f"PASS: Cache stats - Hit ratio: {stats['cache_hit_ratio']:.2%}")
+        # Verify all items are cached
+        self.assertEqual(test_cache.get("key1"), "value1")
+        self.assertEqual(test_cache.get("key2"), "value2")
+        self.assertEqual(test_cache.get("key3"), "value3")
+        self.assertEqual(test_cache.size(), 3)
         
         # Access key1 to make it most recently used
         test_cache.get("key1")
@@ -176,11 +161,12 @@ class CoreEnterpriseTests(unittest.TestCase):
         
         # Test cache statistics
         stats = test_cache.get_stats()
-        self.assertIn('hit_ratio', stats)
-        self.assertGreaterEqual(stats['hit_ratio'], 0)
+        self.assertIn('hit_count', stats)
+        self.assertIn('miss_count', stats)
+        self.assertIn('cache_hit_ratio', stats)
         
         print(f"PASS: LRU eviction working correctly")
-        print(f"PASS: Cache stats - Hit ratio: {stats['hit_ratio']:.2%}")
+        print(f"PASS: Cache stats - Hit ratio: {stats['cache_hit_ratio']:.2%}")
 
 def run_core_tests():
     """Run core tests and provide summary"""
