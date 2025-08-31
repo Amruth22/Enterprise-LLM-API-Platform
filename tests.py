@@ -1,571 +1,230 @@
-import pytest
-import json
+import unittest
 import os
-import time
-import asyncio
-from unittest.mock import patch, MagicMock, Mock
+import sys
 from dotenv import load_dotenv
-from collections import OrderedDict
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Any
 
-# Mock data for testing
-MOCK_RESPONSES = {
-    "text_generation": "Once upon a time, there was a curious cat named Whiskers who discovered a magical garden behind an old oak tree.",
-    "code_generation": "def add_numbers(a, b):\n    \"\"\"Add two numbers and return the result.\"\"\"\n    return a + b\n\n# Example usage\nresult = add_numbers(5, 3)\nprint(f'Result: {result}')",
-    "classification_positive": "positive",
-    "classification_negative": "negative", 
-    "classification_neutral": "neutral"
-}
+# Add the current directory to Python path to import project modules
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, current_dir)
 
-# Mock enterprise components
-@dataclass
-class MockCostRecord:
-    timestamp: float
-    endpoint: str
-    user_ip: str
-    prompt: str
-    response: str
-    input_tokens: int
-    output_tokens: int
-    input_cost: float
-    output_cost: float
-    total_cost: float
-    cached: bool = False
+class CoreEnterpriseTests(unittest.TestCase):
+    """Core 5 unit tests for Enterprise LLM API with real components"""
+    
+    @classmethod
+    def setUpClass(cls):
+        """Load environment variables and validate API key"""
+        load_dotenv()
+        
+        # Validate API key
+        cls.api_key = os.getenv('GOOGLE_API_KEY')
+        if not cls.api_key or not cls.api_key.startswith('AIza'):
+            raise unittest.SkipTest("Valid GOOGLE_API_KEY not found in environment")
+        
+        print(f"Using API Key: {cls.api_key[:10]}...{cls.api_key[-5:]}")
+        
+        # Initialize enterprise components
+        try:
+            from lru_cache import LRUCache
+            from cost_tracker import CostTracker
+            from gemini_wrapper import generate_text, generate_code
+            
+            cls.lru_cache = LRUCache(max_size=100, default_ttl=3600)
+            cls.cost_tracker = CostTracker()
+            cls.generate_text = generate_text
+            cls.generate_code = generate_code
+            
+            print("Enterprise components loaded successfully")
+        except ImportError as e:
+            raise unittest.SkipTest(f"Required enterprise components not found: {e}")
 
-class MockTokenCounter:
-    INPUT_COST_PER_MILLION = 0.10
-    OUTPUT_COST_PER_MILLION = 0.40
-    
-    def count_tokens(self, text: str) -> int:
-        return max(1, len(text) // 4)  # Simple estimation
-    
-    def calculate_cost(self, input_tokens: int, output_tokens: int):
-        input_cost = (input_tokens / 1_000_000) * self.INPUT_COST_PER_MILLION
-        output_cost = (output_tokens / 1_000_000) * self.OUTPUT_COST_PER_MILLION
-        total_cost = input_cost + output_cost
-        return input_cost, output_cost, total_cost
+    def test_01_text_generation(self):
+        """Test 1: Text generation with real API"""
+        print("Running Test 1: Text generation")
+        
+        # Test with simple prompt
+        prompt = "Write a one-sentence story about a curious cat"
+        result = self.generate_text(prompt)
+        
+        # Assertions
+        self.assertIsInstance(result, str)
+        self.assertGreater(len(result), 0)
+        self.assertIn('cat', result.lower())
+        
+        print(f"PASS: Generated text: {result[:50]}...")
 
-class MockLRUCache:
-    def __init__(self, max_size: int = 1000, default_ttl: int = 3600):
-        self.max_size = max_size
-        self.default_ttl = default_ttl
-        self.cache = OrderedDict()
-        self._hit_count = 0
-        self._miss_count = 0
-        self._total_count = 0
-    
-    def get(self, key: str):
-        if key in self.cache:
-            self._hit_count += 1
-            value = self.cache[key]
-            self.cache.move_to_end(key)
-            return value
-        self._miss_count += 1
-        return None
-    
-    def put(self, key: str, value: Any, ttl: Optional[int] = None):
-        self.cache[key] = value
-        self.cache.move_to_end(key)
-        while len(self.cache) > self.max_size:
-            self.cache.popitem(last=False)
-    
-    def size(self):
-        return len(self.cache)
-    
-    def get_stats(self):
-        self._total_count = self._hit_count + self._miss_count
-        return {
-            'size': len(self.cache),
-            'max_size': self.max_size,
-            'hit_count': self._hit_count,
-            'miss_count': self._miss_count,
-            'cache_hit_ratio': self._hit_count / max(self._total_count, 1)
-        }
+    def test_02_code_generation(self):
+        """Test 2: Code generation with real API"""
+        print("Running Test 2: Code generation")
+        
+        # Test with code prompt
+        prompt = "Write a Python function to add two numbers"
+        result = self.generate_code(prompt)
+        
+        # Assertions
+        self.assertIsInstance(result, str)
+        self.assertGreater(len(result), 0)
+        self.assertIn('def', result.lower())  # Should contain function definition
+        
+        print("PASS: Code generation contains function definition")
 
-class MockResponseCache(MockLRUCache):
-    def get_cached_response(self, prompt: str, task_type: str):
-        cache_key = f"{prompt}:{task_type}"
-        self._total_count += 1
-        cached = self.get(cache_key)
-        return cached
-    
-    def cache_response(self, prompt: str, task_type: str, response: Any, 
-                      input_tokens: int, output_tokens: int, cost: float, ttl: Optional[int] = None):
-        cache_key = f"{prompt}:{task_type}"
-        cache_data = {
-            'response': response,
-            'input_tokens': input_tokens,
-            'output_tokens': output_tokens,
-            'cost': cost,
-            'cached_at': time.time()
-        }
-        self.put(cache_key, cache_data, ttl)
+    def test_03_cache_functionality(self):
+        """Test 3: LRU Cache functionality with real implementation"""
+        print("Running Test 3: Cache functionality")
+        
+        # Test cache operations
+        cache_key = "test_prompt_cache"
+        cache_value = "cached_response_data"
+        
+        # Test cache miss
+        result = self.lru_cache.get(cache_key)
+        self.assertIsNone(result)
+        
+        # Test cache put
+        self.lru_cache.put(cache_key, cache_value)
+        
+        # Test cache hit
+        cached_result = self.lru_cache.get(cache_key)
+        self.assertEqual(cached_result, cache_value)
+        
+        # Test cache size
+        self.assertGreater(self.lru_cache.size(), 0)
+        
+        # Test cache stats
+        stats = self.lru_cache.get_stats()
+        self.assertIn('size', stats)
+        self.assertIn('max_size', stats)
+        self.assertIn('hit_count', stats)
+        self.assertIn('miss_count', stats)
+        
+        print(f"PASS: Cache working - Size: {stats['size']}, Hits: {stats['hit_count']}, Misses: {stats['miss_count']}")
 
-class MockCostTracker:
-    def __init__(self):
-        self.token_counter = MockTokenCounter()
-        self.records = []
-    
-    def track_request(self, endpoint: str, user_ip: str, prompt: str, 
-                     response: str, cached: bool = False):
-        input_tokens = self.token_counter.count_tokens(prompt)
-        output_tokens = self.token_counter.count_tokens(response)
-        input_cost, output_cost, total_cost = self.token_counter.calculate_cost(input_tokens, output_tokens)
+    def test_04_cost_tracking(self):
+        """Test 4: Cost tracking with real implementation"""
+        print("Running Test 4: Cost tracking")
         
-        record = MockCostRecord(
-            timestamp=time.time(),
-            endpoint=endpoint,
-            user_ip=user_ip,
-            prompt=prompt[:100],
-            response=response[:100],
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            input_cost=input_cost,
-            output_cost=output_cost,
-            total_cost=total_cost if not cached else 0.0,
-            cached=cached
-        )
-        self.records.append(record)
-        return record
-    
-    def get_usage_stats(self, hours: int = 24):
-        return {
-            'period_hours': hours,
-            'total_requests': len(self.records),
-            'cached_requests': sum(1 for r in self.records if r.cached),
-            'total_cost': sum(r.total_cost for r in self.records),
-            'cost_savings_from_cache': sum(r.input_cost + r.output_cost for r in self.records if r.cached)
-        }
+        # Test cost tracking for a request
+        endpoint = "/api/v1/generate/text"
+        user_ip = "127.0.0.1"
+        prompt = "Test prompt for cost tracking"
+        response = "Generated response for cost tracking test"
+        
+        # Track the request
+        record = self.cost_tracker.track_request(endpoint, user_ip, prompt, response)
+        
+        # Assertions
+        self.assertIsNotNone(record)
+        self.assertGreater(record.input_tokens, 0)
+        self.assertGreater(record.output_tokens, 0)
+        self.assertGreaterEqual(record.total_cost, 0)
+        self.assertEqual(record.endpoint, endpoint)
+        self.assertEqual(record.user_ip, user_ip)
+        
+        # Test usage stats
+        stats = self.cost_tracker.get_usage_stats(24)
+        self.assertIn('total_requests', stats)
+        self.assertIn('total_cost', stats)
+        self.assertGreater(stats['total_requests'], 0)
+        
+        print(f"PASS: Cost tracked - Input: {record.input_tokens} tokens, Output: {record.output_tokens} tokens, Cost: ${record.total_cost:.6f}")
+        print(f"PASS: Usage stats - Requests: {stats['total_requests']}, Total cost: ${stats['total_cost']:.6f}")
 
-# Mock API functions
-class MockAPI:
-    def __init__(self):
-        self.response_cache = MockResponseCache(max_size=500, default_ttl=1800)
-        self.cost_tracker = MockCostTracker()
-        self.request_count = 0
-    
-    async def generate_text(self, prompt: str):
-        """Mock text generation with caching"""
-        await asyncio.sleep(0.01)  # Simulate processing time
+    def test_05_lru_cache_advanced(self):
+        """Test 5: Advanced LRU Cache behavior"""
+        print("Running Test 5: Advanced LRU Cache behavior")
         
-        # Check cache first
-        cached_response = self.response_cache.get_cached_response(prompt, 'text')
-        if cached_response:
-            self.cost_tracker.track_request('/api/v1/generate/text', '127.0.0.1', prompt, cached_response['response'], cached=True)
-            return {
-                'generated_text': cached_response['response'],
-                'cached': True,
-                'cost_total': 0.0,
-                'cost_overall': sum(r.total_cost for r in self.cost_tracker.records)
-            }
+        # Create a small cache for testing eviction
+        test_cache = self.lru_cache.__class__(max_size=3, default_ttl=10)
         
-        # Generate new response
-        text = MOCK_RESPONSES["text_generation"]
-        cost_record = self.cost_tracker.track_request('/api/v1/generate/text', '127.0.0.1', prompt, text)
-        self.response_cache.cache_response(prompt, 'text', text, cost_record.input_tokens, cost_record.output_tokens, cost_record.total_cost)
+        # Fill cache to capacity
+        test_cache.put("key1", "value1")
+        test_cache.put("key2", "value2")
+        test_cache.put("key3", "value3")
         
-        return {
-            'generated_text': text,
-            'cached': False,
-            'cost_total': cost_record.total_cost,
-            'cost_overall': sum(r.total_cost for r in self.cost_tracker.records),
-            'input_tokens': cost_record.input_tokens,
-            'output_tokens': cost_record.output_tokens
-        }
-    
-    async def generate_code(self, prompt: str):
-        """Mock code generation with caching"""
-        await asyncio.sleep(0.01)  # Simulate processing time
+        # Verify all items are cached
+        self.assertEqual(test_cache.get("key1"), "value1")
+        self.assertEqual(test_cache.get("key2"), "value2")
+        self.assertEqual(test_cache.get("key3"), "value3")
+        self.assertEqual(test_cache.size(), 3)
         
-        cached_response = self.response_cache.get_cached_response(prompt, 'code')
-        if cached_response:
-            self.cost_tracker.track_request('/api/v1/generate/code', '127.0.0.1', prompt, cached_response['response'], cached=True)
-            return {
-                'generated_code': cached_response['response'],
-                'cached': True,
-                'cost_total': 0.0,
-                'cost_overall': sum(r.total_cost for r in self.cost_tracker.records)
-            }
+        # Access key1 to make it most recently used
+        test_cache.get("key1")
         
-        code = MOCK_RESPONSES["code_generation"]
-        cost_record = self.cost_tracker.track_request('/api/v1/generate/code', '127.0.0.1', prompt, code)
-        self.response_cache.cache_response(prompt, 'code', code, cost_record.input_tokens, cost_record.output_tokens, cost_record.total_cost)
+        # Add new item (should evict key2 as it's least recently used)
+        test_cache.put("key4", "value4")
         
-        return {
-            'generated_code': code,
-            'cached': False,
-            'cost_total': cost_record.total_cost,
-            'cost_overall': sum(r.total_cost for r in self.cost_tracker.records)
-        }
-    
-    async def classify_text(self, text: str, categories: List[str]):
-        """Mock text classification with caching"""
-        await asyncio.sleep(0.01)  # Simulate processing time
+        # Verify eviction behavior
+        self.assertIsNone(test_cache.get("key2"))  # Should be evicted
+        self.assertEqual(test_cache.get("key1"), "value1")  # Should still exist
+        self.assertEqual(test_cache.get("key3"), "value3")  # Should still exist
+        self.assertEqual(test_cache.get("key4"), "value4")  # Should exist
+        self.assertEqual(test_cache.size(), 3)
         
-        cache_prompt = f"text:{text}|categories:{','.join(categories)}"
-        cached_response = self.response_cache.get_cached_response(cache_prompt, 'classify')
+        # Test cache statistics
+        stats = test_cache.get_stats()
+        self.assertGreater(stats['hit_count'], 0)
+        self.assertGreater(stats['miss_count'], 0)
+        self.assertGreater(stats['cache_hit_ratio'], 0)
         
-        if cached_response:
-            self.cost_tracker.track_request('/api/v1/classify/text', '127.0.0.1', cache_prompt, cached_response['response'], cached=True)
-            return {
-                'classification': cached_response['response'],
-                'cached': True,
-                'cost_total': 0.0,
-                'cost_overall': sum(r.total_cost for r in self.cost_tracker.records)
-            }
-        
-        # Mock classification logic
-        text_lower = text.lower()
-        if any(word in text_lower for word in ['love', 'amazing', 'great', 'perfect', 'excellent']):
-            classification = MOCK_RESPONSES["classification_positive"]
-        elif any(word in text_lower for word in ['hate', 'terrible', 'awful', 'worst', 'bad']):
-            classification = MOCK_RESPONSES["classification_negative"]
-        else:
-            classification = MOCK_RESPONSES["classification_neutral"]
-        
-        cost_record = self.cost_tracker.track_request('/api/v1/classify/text', '127.0.0.1', cache_prompt, classification)
-        self.response_cache.cache_response(cache_prompt, 'classify', classification, cost_record.input_tokens, cost_record.output_tokens, cost_record.total_cost)
-        
-        return {
-            'classification': classification,
-            'cached': False,
-            'cost_total': cost_record.total_cost,
-            'cost_overall': sum(r.total_cost for r in self.cost_tracker.records)
-        }
-    
-    def get_health(self):
-        """Mock health check"""
-        return {'status': 'healthy', 'timestamp': time.time()}
-    
-    def get_stats(self):
-        """Mock stats endpoint"""
-        return {
-            'cache_stats': self.response_cache.get_stats(),
-            'usage_stats': self.cost_tracker.get_usage_stats(24),
-            'rate_limit_stats': {
-                'cache_size': 45,
-                'max_size': 10000
-            }
-        }
+        print(f"PASS: LRU eviction working correctly")
+        print(f"PASS: Cache stats - Hit ratio: {stats['cache_hit_ratio']:.2%}")
 
-# Global mock API instance
-mock_api = MockAPI()
-
-# ============================================================================
-# ASYNC PYTEST TEST FUNCTIONS
-# ============================================================================
-
-async def test_01_env_api_key_configured():
-    """Test 1: API Key Configuration"""
-    print("Running Test 1: API Key Configuration")
+def run_core_tests():
+    """Run core tests and provide summary"""
+    print("=" * 60)
+    print("[*] Core Enterprise LLM Unit Tests (5 Tests)")
+    print("Testing with REAL API and Enterprise Components")
+    print("=" * 60)
     
-    # Check if .env file exists
-    env_file_path = os.path.join(os.path.dirname(__file__), '.env')
-    if os.path.exists(env_file_path):
-        print("PASS: .env file exists")
-    else:
-        print("INFO: .env file not found (optional for mock tests)")
-    
-    # Check if API key is loaded (optional for mock tests)
+    # Check API key
     load_dotenv()
     api_key = os.getenv('GOOGLE_API_KEY')
-    if api_key and api_key.startswith('AIza'):
-        print(f"PASS: API Key configured: {api_key[:10]}...{api_key[-5:]}")
-    else:
-        print("INFO: GOOGLE_API_KEY not configured (not required for mock tests)")
     
-    assert True, "Mock tests don't require real API key"
-
-async def test_02_generate_text_endpoint():
-    """Test 2: Text Generation Endpoint"""
-    print("Running Test 2: Text Generation Endpoint")
-    
-    prompt = "Write a one-sentence story about a cat."
-    result = await mock_api.generate_text(prompt)
-    
-    assert 'generated_text' in result, "Response should contain 'generated_text'"
-    assert result['generated_text'] is not None, "Generated text should not be None"
-    assert len(result['generated_text']) > 0, "Generated text should not be empty"
-    assert "cat" in result['generated_text'].lower(), "Mock response should contain 'cat'"
-    assert 'cached' in result, "Response should indicate cache status"
-    assert 'cost_total' in result, "Response should include cost information"
-    
-    print(f"PASS: Text generated (mocked): {result['generated_text'][:50]}...")
-    print(f"PASS: Cached: {result['cached']}, Cost: ${result['cost_total']:.6f}")
-
-async def test_03_generate_code_endpoint():
-    """Test 3: Code Generation Endpoint"""
-    print("Running Test 3: Code Generation Endpoint")
-    
-    prompt = "Create a simple Python function that adds two numbers"
-    result = await mock_api.generate_code(prompt)
-    
-    assert 'generated_code' in result, "Response should contain 'generated_code'"
-    assert result['generated_code'] is not None, "Generated code should not be None"
-    assert len(result['generated_code']) > 0, "Generated code should not be empty"
-    assert 'def' in result['generated_code'], "Generated code should contain a function definition"
-    assert 'add_numbers' in result['generated_code'], "Mock code should contain expected function name"
-    assert 'cached' in result, "Response should indicate cache status"
-    
-    print(f"PASS: Code generated (mocked): {result['generated_code'][:50]}...")
-    print(f"PASS: Cached: {result['cached']}, Cost: ${result['cost_total']:.6f}")
-
-async def test_04_classify_text_endpoint():
-    """Test 4: Text Classification Endpoint"""
-    print("Running Test 4: Text Classification Endpoint")
-    
-    text = "I love this amazing product! It works perfectly."
-    categories = ["positive", "negative", "neutral"]
-    result = await mock_api.classify_text(text, categories)
-    
-    assert 'classification' in result, "Response should contain 'classification'"
-    assert result['classification'] is not None, "Classification should not be None"
-    assert result['classification'] in ['positive', 'negative', 'neutral'], "Classification should be valid"
-    assert result['classification'] == 'positive', "Text with 'love' and 'amazing' should be classified as positive"
-    assert 'cached' in result, "Response should indicate cache status"
-    
-    print(f"PASS: Text classified as: {result['classification']}")
-    print(f"PASS: Cached: {result['cached']}, Cost: ${result['cost_total']:.6f}")
-
-async def test_05_endpoint_error_handling():
-    """Test 5: Error Handling"""
-    print("Running Test 5: Error Handling")
-    
-    # Test empty prompt
-    try:
-        await mock_api.generate_text("")
-        assert False, "Should raise error for empty prompt"
-    except:
-        print("PASS: Empty prompt error handling working")
-    
-    # Test None prompt
-    try:
-        await mock_api.generate_text(None)
-        assert False, "Should raise error for None prompt"
-    except:
-        print("PASS: None prompt error handling working")
-    
-    # Test empty categories
-    try:
-        await mock_api.classify_text("test text", [])
-        assert False, "Should raise error for empty categories"
-    except:
-        print("PASS: Empty categories error handling working")
-    
-    print("PASS: Error handling working correctly")
-
-async def test_06_lru_cache_functionality():
-    """Test 6: LRU Cache Functionality"""
-    print("Running Test 6: LRU Cache Functionality")
-    
-    # Test response cache
-    response_cache = MockResponseCache(max_size=3, default_ttl=10)
-    
-    # Cache some responses
-    response_cache.cache_response("test1", "text", "response1", 100, 200, 0.05)
-    response_cache.cache_response("test2", "text", "response2", 150, 250, 0.075)
-    response_cache.cache_response("test3", "text", "response3", 120, 220, 0.06)
-    
-    # Test cache hits
-    cached1 = response_cache.get_cached_response("test1", "text")
-    assert cached1 is not None, "Should find cached response"
-    assert cached1['response'] == "response1", "Should return correct cached response"
-    
-    # Add one more (should evict least recently used)
-    response_cache.cache_response("test4", "text", "response4", 130, 230, 0.065)
-    
-    # test2 should be evicted as it was least recently used
-    cached2 = response_cache.get_cached_response("test2", "text")
-    assert cached2 is None, "LRU item should be evicted"
-    
-    # Test cache stats
-    stats = response_cache.get_stats()
-    assert 'hit_count' in stats, "Stats should include hit count"
-    assert 'cache_hit_ratio' in stats, "Stats should include hit ratio"
-    
-    print("PASS: LRU Cache working correctly")
-    print(f"PASS: Cache stats - Hits: {stats['hit_count']}, Ratio: {stats['cache_hit_ratio']:.2%}")
-
-async def test_07_cost_tracking():
-    """Test 7: Cost Tracking"""
-    print("Running Test 7: Cost Tracking")
-    
-    cost_tracker = MockCostTracker()
-    
-    # Track a request
-    record = cost_tracker.track_request(
-        "/api/v1/generate/text",
-        "127.0.0.1",
-        "Test prompt for cost tracking",
-        "Generated response for cost tracking test"
-    )
-    
-    assert record is not None, "Should create cost record"
-    assert record.input_tokens > 0, "Should count input tokens"
-    assert record.output_tokens > 0, "Should count output tokens"
-    assert record.total_cost > 0, "Should calculate total cost"
-    assert record.cached == False, "New request should not be cached"
-    
-    print(f"PASS: Cost tracked - Input: {record.input_tokens} tokens, Output: {record.output_tokens} tokens, Cost: ${record.total_cost:.6f}")
-    
-    # Get usage stats
-    stats = cost_tracker.get_usage_stats(1)
-    assert stats['total_requests'] > 0, "Should have request count"
-    assert stats['total_cost'] >= 0, "Should have cost calculation"
-    
-    print(f"PASS: Usage stats - Requests: {stats['total_requests']}, Total cost: ${stats['total_cost']:.6f}")
-
-async def test_08_api_headers():
-    """Test 8: API Response Headers Simulation"""
-    print("Running Test 8: API Response Headers")
-    
-    prompt = "Say hello in one word"
-    result = await mock_api.generate_text(prompt)
-    
-    # Validate response structure (simulating headers)
-    assert 'generated_text' in result, "Should have generated text"
-    assert 'cached' in result, "Should have cache status"
-    assert 'cost_total' in result, "Should have cost information"
-    assert 'cost_overall' in result, "Should have overall cost"
-    
-    # Validate cost information
-    cost_total = result['cost_total']
-    cached = result['cached']
-    
-    assert isinstance(cost_total, float), "Cost should be a float"
-    assert isinstance(cached, bool), "Cached should be a boolean"
-    
-    print(f"PASS: Mock headers - Cost: ${cost_total:.6f}, Cached: {cached}")
-    
-    # Test second request (should be cached)
-    result2 = await mock_api.generate_text(prompt)
-    assert result2['cached'] == True, "Second identical request should be cached"
-    assert result2['cost_total'] == 0.0, "Cached response should have zero cost"
-    
-    print(f"PASS: Second request cached with zero cost")
-
-async def test_09_health_and_stats_endpoints():
-    """Test 9: Health and Stats Endpoints"""
-    print("Running Test 9: Health and Stats Endpoints")
-    
-    # Test health endpoint
-    health_data = mock_api.get_health()
-    assert health_data['status'] == 'healthy', "Health status should be 'healthy'"
-    assert 'timestamp' in health_data, "Health response should contain timestamp"
-    assert isinstance(health_data['timestamp'], float), "Timestamp should be a float"
-    
-    print("PASS: Health endpoint working")
-    
-    # Test stats endpoint
-    stats_data = mock_api.get_stats()
-    assert 'cache_stats' in stats_data, "Stats should contain cache_stats"
-    assert 'usage_stats' in stats_data, "Stats should contain usage_stats"
-    assert 'rate_limit_stats' in stats_data, "Stats should contain rate_limit_stats"
-    
-    # Validate cache stats structure
-    cache_stats = stats_data['cache_stats']
-    assert 'hit_count' in cache_stats, "Cache stats should include hit count"
-    assert 'cache_hit_ratio' in cache_stats, "Cache stats should include hit ratio"
-    
-    print("PASS: Stats endpoint working")
-    print(f"PASS: Cache hit ratio: {cache_stats.get('cache_hit_ratio', 0):.2%}")
-
-async def test_10_cache_functionality():
-    """Test 10: Cache Hit/Miss Behavior"""
-    print("Running Test 10: Cache Hit/Miss Behavior")
-    
-    # Make initial request (should be cache miss)
-    prompt = "Cache test prompt unique"
-    result1 = await mock_api.generate_text(prompt)
-    
-    assert result1['cached'] == False, "First request should not be cached"
-    assert result1['cost_total'] > 0, "First request should have cost"
-    
-    print("PASS: Cache miss working correctly")
-    
-    # Make same request again (should be cache hit)
-    result2 = await mock_api.generate_text(prompt)
-    
-    assert result2['cached'] == True, "Second identical request should be cached"
-    assert result2['cost_total'] == 0.0, "Cached response should have zero cost"
-    assert result2['generated_text'] == result1['generated_text'], "Cached response should be identical"
-    
-    print("PASS: Cache hit working correctly")
-    print(f"PASS: Cost savings - First: ${result1['cost_total']:.6f}, Second: ${result2['cost_total']:.6f}")
-    
-    # Test cache stats
-    stats = mock_api.response_cache.get_stats()
-    assert stats['hit_count'] > 0, "Should have cache hits"
-    assert stats['cache_hit_ratio'] > 0, "Should have positive hit ratio"
-    
-    print(f"PASS: Cache stats - Hit ratio: {stats['cache_hit_ratio']:.2%}")
-
-async def run_async_tests():
-    """Run all async tests concurrently"""
-    print("Running Enterprise LLM API Platform Tests (Async Mock Version)...")
-    print("Using async mocked data for ultra-fast execution")
-    print("Testing enterprise features: caching, cost tracking, logging")
-    print("=" * 70)
-    
-    # List of exactly 10 async test functions
-    test_functions = [
-        test_01_env_api_key_configured,
-        test_02_generate_text_endpoint,
-        test_03_generate_code_endpoint,
-        test_04_classify_text_endpoint,
-        test_05_endpoint_error_handling,
-        test_06_lru_cache_functionality,
-        test_07_cost_tracking,
-        test_08_api_headers,
-        test_09_health_and_stats_endpoints,
-        test_10_cache_functionality
-    ]
-    
-    passed = 0
-    failed = 0
-    
-    # Run tests sequentially for better output readability
-    for test_func in test_functions:
-        try:
-            await test_func()
-            passed += 1
-        except Exception as e:
-            print(f"FAIL: {test_func.__name__} - {e}")
-            failed += 1
-    
-    print("=" * 70)
-    print(f"📊 Test Results Summary:")
-    print(f"✅ Passed: {passed}")
-    print(f"❌ Failed: {failed}")
-    print(f"📈 Total: {passed + failed}")
-    
-    if failed == 0:
-        print("🎉 All tests passed!")
-        print("✅ Enterprise LLM API Platform (Async Mock) is working correctly")
-        print("⚡ Ultra-fast async execution with mocked enterprise features")
-        print("💰 Cost tracking, caching, and logging features validated")
-        print("🚀 No server startup required - pure async testing")
-        return True
-    else:
-        print(f"⚠️  {failed} test(s) failed")
+    if not api_key or not api_key.startswith('AIza'):
+        print("[ERROR] Valid GOOGLE_API_KEY not found!")
         return False
-
-def run_all_tests():
-    """Run all tests and provide summary (sync wrapper for async tests)"""
-    return asyncio.run(run_async_tests())
-
-if __name__ == "__main__":
-    print("🚀 Starting Enterprise LLM API Platform Tests (Async Version)")
-    print("📋 No API keys or server required - using async mocked responses")
-    print("⚡ Ultra-fast async execution for enterprise features")
-    print("🏢 Enterprise-grade platform validation with async testing")
+    
+    print(f"[OK] Using API Key: {api_key[:10]}...{api_key[-5:]}")
     print()
     
-    # Run the tests
-    start_time = time.time()
-    success = run_all_tests()
-    end_time = time.time()
+    # Run tests
+    suite = unittest.TestLoader().loadTestsFromTestCase(CoreEnterpriseTests)
+    runner = unittest.TextTestRunner(verbosity=2)
+    result = runner.run(suite)
     
-    print(f"\n⏱️  Total execution time: {end_time - start_time:.2f} seconds")
+    print("\n" + "=" * 60)
+    print("[*] Test Results:")
+    print(f"[*] Tests Run: {result.testsRun}")
+    print(f"[*] Failures: {len(result.failures)}")
+    print(f"[*] Errors: {len(result.errors)}")
+    
+    if result.failures:
+        print("\n[FAILURES]:")
+        for test, traceback in result.failures:
+            print(f"  - {test}")
+            print(f"    {traceback}")
+    
+    if result.errors:
+        print("\n[ERRORS]:")
+        for test, traceback in result.errors:
+            print(f"  - {test}")
+            print(f"    {traceback}")
+    
+    success = len(result.failures) == 0 and len(result.errors) == 0
+    
+    if success:
+        print("\n[SUCCESS] All 5 core enterprise tests passed!")
+        print("[OK] Enterprise components working correctly with real API")
+        print("[OK] Text generation, Code generation, Cache, Cost tracking validated")
+    else:
+        print(f"\n[WARNING] {len(result.failures) + len(result.errors)} test(s) failed")
+    
+    return success
+
+if __name__ == "__main__":
+    print("[*] Starting Core Enterprise Tests")
+    print("[*] 5 essential tests with real API and enterprise components")
+    print("[*] Components: Text Gen, Code Gen, LRU Cache, Cost Tracking")
+    print()
+    
+    success = run_core_tests()
     exit(0 if success else 1)
