@@ -29,10 +29,19 @@ class CoreEnterpriseTests(unittest.TestCase):
             from gemini_wrapper import generate_text, generate_code
             
             cls.lru_cache = LRUCache(max_size=100, default_ttl=3600)
-            cls.cost_tracker = CostTracker()
-            cls.generate_text = generate_text
-            cls.generate_code = generate_code
+        # Initialize enterprise components
+        try:
+            from lru_cache import LRUCache
+            from cost_tracker import CostTracker
+            import gemini_wrapper
             
+            cls.lru_cache = LRUCache(max_size=100, default_ttl=3600)
+            cls.cost_tracker = CostTracker()
+            cls.gemini_wrapper = gemini_wrapper
+            
+            print("Enterprise components loaded successfully")
+        except ImportError as e:
+            raise unittest.SkipTest(f"Required enterprise components not found: {e}")
             print("Enterprise components loaded successfully")
         except ImportError as e:
             raise unittest.SkipTest(f"Required enterprise components not found: {e}")
@@ -43,6 +52,7 @@ class CoreEnterpriseTests(unittest.TestCase):
         
         # Test with simple prompt
         prompt = "Write a one-sentence story about a curious cat"
+        result = self.gemini_wrapper.generate_text(prompt)
         result = self.generate_text(prompt)
         
         # Assertions
@@ -53,8 +63,9 @@ class CoreEnterpriseTests(unittest.TestCase):
         print(f"PASS: Generated text: {result[:50]}...")
 
     def test_02_code_generation(self):
-        """Test 2: Code generation with real API"""
-        print("Running Test 2: Code generation")
+        # Test with code prompt
+        prompt = "Write a Python function to add two numbers"
+        result = self.gemini_wrapper.generate_code(prompt)
         
         # Test with code prompt
         prompt = "Write a Python function to add two numbers"
